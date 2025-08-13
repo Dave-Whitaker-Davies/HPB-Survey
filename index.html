@@ -610,6 +610,7 @@
             
             fetch(scriptURL, {
                 method: 'POST',
+                mode: 'cors',
                 body: JSON.stringify(submitData),
                 headers: {
                     'Content-Type': 'application/json',
