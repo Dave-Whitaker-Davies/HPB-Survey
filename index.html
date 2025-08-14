@@ -242,28 +242,31 @@
             line-height: 1.6;
         }
 
-        .results-section {
-            background: #f8f9fa;
-            padding: 30px;
-            border-radius: 10px;
-            margin-top: 30px;
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            text-align: center;
             display: none;
         }
 
-        .results-section h3 {
-            color: #333;
-            margin-bottom: 20px;
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
         }
 
-        .results-data {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            font-family: monospace;
-            font-size: 14px;
-            max-height: 400px;
-            overflow-y: auto;
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-message.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #b8daff;
         }
 
         @media (max-width: 768px) {
@@ -291,8 +294,10 @@
         <div class="form-container">
             <div class="instructions">
                 <h4>Instructions</h4>
-                <p>For each question, please rate yourself on both the "Before" and "After" scales (1-5). This helps track your development over time. When you submit, your responses will be automatically saved to a Google Sheet for analysis.</p>
+                <p>For each question, please rate yourself on both the "Before" and "After" scales (1-5). This helps track your development over time. When you submit, your responses will be saved to a Google Sheet for analysis.</p>
             </div>
+
+            <div id="statusMessage" class="status-message"></div>
 
             <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
@@ -327,17 +332,12 @@
                 </div>
 
                 <div class="submit-section">
-                    <button type="submit" class="submit-btn" onclick="handleSubmit(event)">Submit to Google Sheets</button>
+                    <button type="submit" class="submit-btn">Submit to Google Sheets</button>
                     <p style="margin-top: 10px; font-size: 14px; color: #666;">
                         Your responses will be automatically saved to the shared Google Sheet
                     </p>
                 </div>
             </form>
-
-            <div class="results-section" id="resultsSection">
-                <h3>Survey Results</h3>
-                <div class="results-data" id="resultsData"></div>
-            </div>
         </div>
     </div>
 
@@ -477,8 +477,22 @@
             }
         ];
 
-        // Store all responses
-        let responses = [];
+        // Updated Google Apps Script URL - replace with your actual deployed URL
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDTpoUZO8I77v7TJg83FWa3idP-RX4SfaWv9N4ZofXn7YEIwnP8BwjBssJOseGILkg/exec';
+
+        function showMessage(message, type) {
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = message;
+            statusElement.className = `status-message ${type}`;
+            statusElement.style.display = 'block';
+            
+            // Auto-hide success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    statusElement.style.display = 'none';
+                }, 5000);
+            }
+        }
 
         function renderQuestions() {
             const container = document.getElementById('questions-container');
@@ -534,7 +548,7 @@
             let completedFields = 0;
             
             // Count completed participant info
-            if (formData.get('name')) completedFields++;
+            if (formData.get('name') && formData.get('name').trim()) completedFields++;
             if (formData.get('programme')) completedFields++;
             
             // Count completed questions
@@ -547,161 +561,131 @@
             document.getElementById('progressFill').style.width = progress + '%';
         }
 
-        function handleSubmit(event) {
+        async function submitToGoogleSheets(data) {
+            try {
+                console.log('Submitting data:', data);
+                
+                // Create form data to avoid CORS preflight
+                const formData = new FormData();
+                
+                // Add all data as form fields
+                Object.keys(data).forEach(key => {
+                    formData.append(key, data[key]);
+                });
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: formData // Send as form data to avoid CORS preflight
+                });
+
+                console.log('Response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.text();
+                console.log('Raw response:', result);
+
+                try {
+                    const jsonResult = JSON.parse(result);
+                    return jsonResult;
+                } catch (parseError) {
+                    console.warn('Response not JSON, but status OK:', result);
+                    return { status: 'success', message: 'Data submitted successfully' };
+                }
+
+            } catch (error) {
+                console.error('Submission error:', error);
+                throw error;
+            }
+        }
+
+        async function handleSubmit(event) {
             event.preventDefault();
-            
-            console.log('Form submitted!');
             
             const form = document.getElementById('hpbForm');
             const formData = new FormData(form);
+            const submitBtn = document.querySelector('.submit-btn');
             
-            console.log('Checking required fields...');
-            // Validate that all required fields are filled
-            const requiredFields = ['name', 'programme'];
-            for (let field of requiredFields) {
-                const value = formData.get(field);
-                console.log(`Field ${field}:`, value);
-                if (!value) {
-                    console.log(`Missing field: ${field}`);
-                    alert(`Please fill in the ${field} field.`);
-                    return;
-                }
+            // Validate required fields
+            const name = formData.get('name')?.trim();
+            const programme = formData.get('programme');
+            
+            if (!name) {
+                showMessage('Please enter your name.', 'error');
+                return;
             }
             
-            console.log('Checking question responses...');
-            // Validate that all questions have both before and after ratings
+            if (!programme) {
+                showMessage('Please select a programme.', 'error');
+                return;
+            }
+            
+            // Validate all questions have both ratings
             for (let question of questions) {
                 const beforeRating = formData.get(`q${question.number}_before`);
                 const afterRating = formData.get(`q${question.number}_after`);
                 
-                console.log(`Question ${question.number}: before=${beforeRating}, after=${afterRating}`);
-                
                 if (!beforeRating || !afterRating) {
-                    console.log(`Missing ratings for question ${question.number}`);
-                    alert(`Please complete both Before and After ratings for Question ${question.number}.`);
+                    showMessage(`Please complete both Before and After ratings for Question ${question.number}.`, 'error');
                     return;
                 }
             }
             
-            console.log('All validations passed, collecting data...');
-            
-            // Prepare data for Google Sheets
-            const submitData = {
-                name: formData.get('name'),
-                programme: formData.get('programme')
-            };
-            
-            // Add question responses
-            questions.forEach(question => {
-                submitData[`q${question.number}_before`] = parseInt(formData.get(`q${question.number}_before`));
-                submitData[`q${question.number}_after`] = parseInt(formData.get(`q${question.number}_after`));
-            });
-            console.log('****** Correct index.html *******');
-            console.log('Submitting to Google Sheets...', submitData);
-            
-            
-            // Submit to Google Apps Script
-            const scriptURL = 'https://script.google.com/macros/s/AKfycbzNIFaL6qAJyHQvIcbnmYUCJqaDgupfPD4TyWuHtRcz24HmRXVoyJSYguR7E80YCVla/exec';
-            
-            // Show loading message
-            const submitBtn = document.querySelector('.submit-btn');
+            // Show submitting state
             const originalText = submitBtn.textContent;
             submitBtn.textContent = 'Submitting...';
             submitBtn.disabled = true;
+            showMessage('Submitting your responses...', 'info');
             
-            fetch(scriptURL, {
-                method: 'POST',
-                redirect: "follow",
-                body: JSON.stringify(submitData),
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8',
-                }
-            })
-            .then(response => response.json())
-            .then(result => {
-                console.log('Success:', result);
-                alert('Assessment submitted successfully! Your responses have been saved to the Google Sheet.');
+            try {
+                // Prepare data
+                const submitData = {
+                    name: name,
+                    programme: programme,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Add question responses
+                questions.forEach(question => {
+                    submitData[`q${question.number}_before`] = parseInt(formData.get(`q${question.number}_before`));
+                    submitData[`q${question.number}_after`] = parseInt(formData.get(`q${question.number}_after`));
+                });
+                
+                // Submit to Google Sheets
+                const result = await submitToGoogleSheets(submitData);
+                
+                console.log('Submission successful:', result);
+                showMessage('Survey submitted successfully! Your responses have been saved.', 'success');
                 
                 // Reset form
                 form.reset();
                 updateProgress();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('There was an error submitting your assessment. Please try again or contact support.');
-            })
-            .finally(() => {
+                
+            } catch (error) {
+                console.error('Submission failed:', error);
+                showMessage(`Submission failed: ${error.message}. Please try again.`, 'error');
+            } finally {
                 // Reset button
                 submitBtn.textContent = originalText;
                 submitBtn.disabled = false;
-            });
-        }
-
-        function displayResults(data) {
-            const resultsSection = document.getElementById('resultsSection');
-            const resultsData = document.getElementById('resultsData');
-            
-            // Calculate summary statistics
-            const improvements = data.responses.map(r => r.improvement);
-            const avgImprovement = improvements.reduce((a, b) => a + b, 0) / improvements.length;
-            const beforeAvg = data.responses.reduce((sum, r) => sum + r.beforeRating, 0) / data.responses.length;
-            const afterAvg = data.responses.reduce((sum, r) => sum + r.afterRating, 0) / data.responses.length;
-            
-            const summary = {
-                participant: data.participant,
-                timestamp: data.timestamp,
-                summary: {
-                    averageBeforeRating: beforeAvg.toFixed(2),
-                    averageAfterRating: afterAvg.toFixed(2),
-                    averageImprovement: avgImprovement.toFixed(2),
-                    totalResponses: data.responses.length
-                },
-                responses: data.responses
-            };
-            
-            resultsData.textContent = JSON.stringify(summary, null, 2);
-            resultsSection.style.display = 'block';
-            
-            // Scroll to results
-            resultsSection.scrollIntoView({ behavior: 'smooth' });
+            }
         }
 
         // Initialize the form
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing form...');
+            console.log('Initializing survey form...');
             renderQuestions();
             
-            // Add event listeners for progress tracking
             const form = document.getElementById('hpbForm');
-            if (form) {
-                console.log('Form found, adding event listeners...');
-                form.addEventListener('change', updateProgress);
-                form.addEventListener('input', updateProgress);
-                form.addEventListener('submit', handleSubmit);
-            } else {
-                console.error('Form not found!');
-            }
+            form.addEventListener('change', updateProgress);
+            form.addEventListener('input', updateProgress);
+            form.addEventListener('submit', handleSubmit);
             
-            // Initial progress update
             updateProgress();
+            console.log('Survey form initialized successfully');
         });
-
-        // Function to export all responses as JSON
-        function exportResponses() {
-            const dataStr = JSON.stringify(responses, null, 2);
-            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-            
-            const exportFileDefaultName = 'hpb_survey_responses.json';
-            
-            const linkElement = document.createElement('a');
-            linkElement.setAttribute('href', dataUri);
-            linkElement.setAttribute('download', exportFileDefaultName);
-            linkElement.click();
-        }
-
-        // Add export button functionality (can be called from console)
-        console.log('To export all responses, run: exportResponses()');
     </script>
 </body>
-
 </html>
