@@ -478,7 +478,7 @@
         ];
 
         // Updated Google Apps Script URL - USE THE EXACT URL FROM YOUR DEPLOYMENT
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdrtfjDnoODe_21PL1fRYQBfmLyKfRXZDrGv1TGUel5K7BpgClAJybfNtgJ8KZ4Q/exec';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwlSYUqllUVDrhFNt1OL2e96YCMQGdSTlYqka2SMOrCWx-w_p9udg4SFnuj46x0derL/exec';
 
         function showMessage(message, type) {
             const statusElement = document.getElementById('statusMessage');
@@ -565,52 +565,119 @@
             try {
                 console.log('Submitting data:', data);
                 
-                // Method 1: Try with simple form submission to avoid ALL CORS issues
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = SCRIPT_URL;
-                form.style.display = 'none';
-                
-                // Add all data as hidden form fields
+                // Method 1: Try with FormData and fetch (most reliable)
+                const formData = new FormData();
                 Object.keys(data).forEach(key => {
-                    const input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = key;
-                    input.value = data[key];
-                    form.appendChild(input);
+                    formData.append(key, data[key]);
                 });
                 
-                // Add to DOM and submit
-                document.body.appendChild(form);
+                console.log('Attempting fetch with FormData...');
+                
+                try {
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    console.log('Fetch response status:', response.status);
+                    const responseText = await response.text();
+                    console.log('Fetch response text:', responseText);
+                    
+                    if (response.ok) {
+                        try {
+                            const jsonResponse = JSON.parse(responseText);
+                            return jsonResponse;
+                        } catch (e) {
+                            return { status: 'success', message: 'Data submitted successfully' };
+                        }
+                    }
+                } catch (fetchError) {
+                    console.log('Fetch failed, trying form submission method:', fetchError);
+                }
+                
+                // Method 2: Fallback to form submission
+                console.log('Falling back to form submission method...');
                 
                 return new Promise((resolve, reject) => {
-                    // Create a temporary iframe to capture the response
+                    // Create iframe first
                     const iframe = document.createElement('iframe');
                     iframe.style.display = 'none';
-                    iframe.name = 'hiddenFrame';
-                    form.target = 'hiddenFrame';
+                    iframe.name = 'hiddenFrame_' + Date.now();
+                    iframe.src = 'about:blank';
                     
-                    iframe.onload = function() {
-                        try {
-                            // Clean up
-                            document.body.removeChild(form);
-                            document.body.removeChild(iframe);
-                            
-                            // Since we can't read the response due to CORS, assume success
-                            resolve({ status: 'success', message: 'Data submitted successfully' });
-                        } catch (error) {
-                            reject(error);
-                        }
+                    // Create form
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = SCRIPT_URL;
+                    form.target = iframe.name;
+                    form.style.display = 'none';
+                    
+                    // Add all data as hidden form fields
+                    Object.keys(data).forEach(key => {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = data[key];
+                        form.appendChild(input);
+                    });
+                    
+                    let submitted = false;
+                    
+                    // Set up success handler
+                    const handleSuccess = () => {
+                        if (submitted) return;
+                        submitted = true;
+                        
+                        console.log('Form submission completed');
+                        
+                        // Clean up
+                        setTimeout(() => {
+                            try {
+                                if (form.parentNode) document.body.removeChild(form);
+                                if (iframe.parentNode) document.body.removeChild(iframe);
+                            } catch (e) {}
+                        }, 1000);
+                        
+                        resolve({ status: 'success', message: 'Data submitted successfully' });
                     };
                     
-                    iframe.onerror = function() {
-                        document.body.removeChild(form);
-                        document.body.removeChild(iframe);
+                    // Set up error handler
+                    const handleError = (error) => {
+                        if (submitted) return;
+                        submitted = true;
+                        
+                        console.log('Form submission failed:', error);
+                        
+                        // Clean up
+                        try {
+                            if (form.parentNode) document.body.removeChild(form);
+                            if (iframe.parentNode) document.body.removeChild(iframe);
+                        } catch (e) {}
+                        
                         reject(new Error('Form submission failed'));
                     };
                     
+                    // Set up iframe handlers
+                    iframe.onload = handleSuccess;
+                    iframe.onerror = handleError;
+                    
+                    // Timeout fallback
+                    setTimeout(() => {
+                        if (!submitted) {
+                            console.log('Form submission timeout, assuming success');
+                            handleSuccess();
+                        }
+                    }, 5000);
+                    
+                    // Add to DOM and submit
                     document.body.appendChild(iframe);
-                    form.submit();
+                    document.body.appendChild(form);
+                    
+                    // Submit with delay
+                    setTimeout(() => {
+                        console.log('Submitting form to:', SCRIPT_URL);
+                        form.submit();
+                    }, 200);
                 });
 
             } catch (error) {
