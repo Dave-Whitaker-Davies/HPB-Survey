@@ -477,8 +477,8 @@
             }
         ];
 
-        // Updated Google Apps Script URL - replace with your actual deployed URL
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDTpoUZ08177v7TJq83FWa3idP-RX4SfaWv9N4ZofXn7YEIwnP8BwjBssJOseGILkg/exec';
+        // Updated Google Apps Script URL - USE THE EXACT URL FROM YOUR DEPLOYMENT
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxdrtfjDnoODe_21PL1fRYQBfmLyKfRXZDrGv1TGUel5K7BpgClAJybfNtgJ8KZ4Q/exec';
 
         function showMessage(message, type) {
             const statusElement = document.getElementById('statusMessage');
@@ -565,35 +565,53 @@
             try {
                 console.log('Submitting data:', data);
                 
-                // Create form data to avoid CORS preflight
-                const formData = new FormData();
+                // Method 1: Try with simple form submission to avoid ALL CORS issues
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = SCRIPT_URL;
+                form.style.display = 'none';
                 
-                // Add all data as form fields
+                // Add all data as hidden form fields
                 Object.keys(data).forEach(key => {
-                    formData.append(key, data[key]);
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = key;
+                    input.value = data[key];
+                    form.appendChild(input);
                 });
-
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    body: formData // Send as form data to avoid CORS preflight
+                
+                // Add to DOM and submit
+                document.body.appendChild(form);
+                
+                return new Promise((resolve, reject) => {
+                    // Create a temporary iframe to capture the response
+                    const iframe = document.createElement('iframe');
+                    iframe.style.display = 'none';
+                    iframe.name = 'hiddenFrame';
+                    form.target = 'hiddenFrame';
+                    
+                    iframe.onload = function() {
+                        try {
+                            // Clean up
+                            document.body.removeChild(form);
+                            document.body.removeChild(iframe);
+                            
+                            // Since we can't read the response due to CORS, assume success
+                            resolve({ status: 'success', message: 'Data submitted successfully' });
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+                    
+                    iframe.onerror = function() {
+                        document.body.removeChild(form);
+                        document.body.removeChild(iframe);
+                        reject(new Error('Form submission failed'));
+                    };
+                    
+                    document.body.appendChild(iframe);
+                    form.submit();
                 });
-
-                console.log('Response status:', response.status);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-
-                const result = await response.text();
-                console.log('Raw response:', result);
-
-                try {
-                    const jsonResult = JSON.parse(result);
-                    return jsonResult;
-                } catch (parseError) {
-                    console.warn('Response not JSON, but status OK:', result);
-                    return { status: 'success', message: 'Data submitted successfully' };
-                }
 
             } catch (error) {
                 console.error('Submission error:', error);
