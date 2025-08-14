@@ -596,9 +596,9 @@
                 submitData[`q${question.number}_before`] = parseInt(formData.get(`q${question.number}_before`));
                 submitData[`q${question.number}_after`] = parseInt(formData.get(`q${question.number}_after`));
             });
-            
-            console.log('Submitting to Google Sheets...', submitData);
             console.log('****** Correct index.html ********');
+            console.log('Submitting to Google Sheets...', submitData);
+            
             
             // Submit to Google Apps Script
             const scriptURL = 'https://script.google.com/macros/s/AKfycbzNIFaL6qAJyHQvIcbnmYUCJqaDgupfPD4TyWuHtRcz24HmRXVoyJSYguR7E80YCVla/exec';
