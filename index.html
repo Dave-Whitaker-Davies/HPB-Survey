@@ -478,7 +478,7 @@
         ];
 
         // Updated Google Apps Script URL - USE THE EXACT URL FROM YOUR DEPLOYMENT
-        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwlSYUqllUVDrhFNt1OL2e96YCMQGdSTlYqka2SMOrCWx-w_p9udg4SFnuj46x0derL/exec';
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzDTpoUZ08177v7TJq83FWa3idP-RX4SfaWv9N4ZofXn7YEIwnP8BwjBssJOseGILkg/exec';
 
         function showMessage(message, type) {
             const statusElement = document.getElementById('statusMessage');
@@ -565,38 +565,8 @@
             try {
                 console.log('Submitting data:', data);
                 
-                // Method 1: Try with FormData and fetch (most reliable)
-                const formData = new FormData();
-                Object.keys(data).forEach(key => {
-                    formData.append(key, data[key]);
-                });
-                
-                console.log('Attempting fetch with FormData...');
-                
-                try {
-                    const response = await fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    console.log('Fetch response status:', response.status);
-                    const responseText = await response.text();
-                    console.log('Fetch response text:', responseText);
-                    
-                    if (response.ok) {
-                        try {
-                            const jsonResponse = JSON.parse(responseText);
-                            return jsonResponse;
-                        } catch (e) {
-                            return { status: 'success', message: 'Data submitted successfully' };
-                        }
-                    }
-                } catch (fetchError) {
-                    console.log('Fetch failed, trying form submission method:', fetchError);
-                }
-                
-                // Method 2: Fallback to form submission
-                console.log('Falling back to form submission method...');
+                // Use ONLY the form submission method since fetch fails due to CORS
+                console.log('Using form submission method...');
                 
                 return new Promise((resolve, reject) => {
                     // Create iframe first
