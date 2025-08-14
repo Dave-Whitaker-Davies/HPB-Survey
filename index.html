@@ -612,10 +612,7 @@
             fetch(scriptURL, {
                 method: 'POST',
                 redirect: "follow",
-                body: submitData,
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                body: submitData
             })
             .then(response => response.json())
             .then(result => {
